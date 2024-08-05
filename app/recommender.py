@@ -1,15 +1,14 @@
-#app/recommender.py
-
 import pandas as pd
 from mlxtend.frequent_patterns import apriori, association_rules
 from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import Embedding, LSTM, Dense
 from tensorflow.keras.preprocessing.sequence import pad_sequences
 from sklearn.preprocessing import LabelEncoder
-from surprise import Dataset, Reader, SVD
+import implicit
 from app.models import Order, Product, Customer, Recommendation, OptimalInterval
 from app import db, logger
 import numpy as np
+from scipy.sparse import csr_matrix
 import os
 
 def get_data():
@@ -77,31 +76,27 @@ def get_rnn_recommendations(customer_id, model, le, df):
     recommended_product = le.inverse_transform([np.argmax(pred)])[0]
     return [recommended_product]
 
-# Collaborative Filtering (SVD)
+# Collaborative Filtering (implicit)
 def prepare_cf_data(df):
     logger.info('Przygotowywanie danych dla Collaborative Filtering.')
-    reader = Reader(rating_scale=(1, 5))
-    df['rating'] = 1  # W tym przypadku każda interakcja jest traktowana jako rating = 1
-    data = Dataset.load_from_df(df[['customer_id', 'product_id', 'rating']], reader)
+    customer_product_matrix = df.pivot(index='customer_id', columns='product_id', values='purchase_date').fillna(0)
+    customer_product_matrix[customer_product_matrix > 0] = 1
+    sparse_matrix = csr_matrix(customer_product_matrix.values)
     logger.info('Dane dla Collaborative Filtering przygotowane pomyślnie.')
-    return data
+    return sparse_matrix, customer_product_matrix
 
-def train_cf_model(data):
+def train_cf_model(sparse_matrix):
     logger.info('Trenowanie modelu Collaborative Filtering.')
-    trainset = data.build_full_trainset()
-    model = SVD()
-    model.fit(trainset)
+    model = implicit.als.AlternatingLeastSquares(factors=50, regularization=0.1, iterations=20)
+    model.fit(sparse_matrix)
     logger.info('Model Collaborative Filtering wytrenowany pomyślnie.')
     return model
 
-def get_cf_recommendations(customer_id, model, df, top_n=10):
-    customer_rated_items = df[df['customer_id'] == customer_id]['product_id'].unique()
-    all_items = df['product_id'].unique()
-    unrated_items = [item for item in all_items if item not in customer_rated_items]
-
-    predictions = [model.predict(customer_id, item) for item in unrated_items]
-    recommendations = sorted(predictions, key=lambda x: x.est, reverse=True)[:top_n]
-    return [rec.iid for rec in recommendations]
+def get_cf_recommendations(customer_id, model, customer_product_matrix, top_n=10):
+    customer_index = list(customer_product_matrix.index).index(customer_id)
+    recommendations = model.recommend(customer_index, customer_product_matrix, N=top_n)
+    product_ids = [customer_product_matrix.columns[i] for i, _ in recommendations]
+    return product_ids
 
 def save_recommendations(customer_id, algorithm, recommendations, probability):
     rec_str = ",".join(map(str, recommendations))
@@ -142,13 +137,12 @@ def generate_recommendations():
             save_recommendations(customer_id, 'rnn', rnn_recommendations, 0.7)
         
         # Collaborative Filtering
-        data = prepare_cf_data(df)
-        cf_model = train_cf_model(data)
+        sparse_matrix, customer_product_matrix = prepare_cf_data(df)
+        cf_model = train_cf_model(sparse_matrix)
         for customer_id in df['customer_id'].unique():
-            cf_recommendations = get_cf_recommendations(customer_id, cf_model, df)
+            cf_recommendations = get_cf_recommendations(customer_id, cf_model, customer_product_matrix)
             save_recommendations(customer_id, 'collaborative_filtering', cf_recommendations, 0.9)
 
         logger.info('Rekomendacje wygenerowane pomyślnie.')
     except Exception as e:
         logger.error(f'Błąd podczas generowania rekomendacji: {e}')
-

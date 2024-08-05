@@ -1,5 +1,3 @@
-#data/data_processing.py
-
 import logging
 from app.recommender import generate_recommendations
 

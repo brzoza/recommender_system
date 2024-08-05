@@ -1,8 +1,17 @@
-#app/routes.py
-
 from flask import request, jsonify, render_template
 from app import app, db, logger
 from app.models import Customer, Recommendation, OptimalInterval
+from app.recommender import Recommender
+import numpy as np
+
+# Przykładowe dane - zastąp swoimi danymi
+user_item_data = np.array([
+    [0, 1, 1],
+    [1, 0, 1],
+    [1, 1, 0]
+])
+
+recommender = Recommender(user_item_data)
 
 @app.route('/')
 def index():
@@ -38,5 +47,9 @@ def recommendations():
     for rec in recommendations:
         result["recommendations"][rec.algorithm].extend(rec.recommendations.split(","))
         result["probabilities"][rec.algorithm] = rec.probability
+
+    # Generowanie rekomendacji przy użyciu implicit
+    user_recommendations = recommender.recommend(int(customer_id))
+    result["recommendations"]["collaborative_filtering"] = [rec[0] for rec in user_recommendations]
 
     return jsonify(result)

@@ -27,4 +27,5 @@ error_handler.setFormatter(formatter)
 logger.addHandler(file_handler)
 logger.addHandler(error_handler)
 
-from app import routes
+from app.routes import main
+app.register_blueprint(main)
