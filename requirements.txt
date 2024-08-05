@@ -1,0 +1,13 @@
+Flask
+Flask-SQLAlchemy
+pandas
+mlxtend
+tensorflow
+scikit-learn
+surprise
+psycopg2-binary
+numpy
+Flask==2.0.1
+Flask-SQLAlchemy==2.5.1
+pyodbc==4.0.30
+sqlalchemy==1.4.22

@@ -1,11 +1,17 @@
-#app/init.py
-
 from flask import Flask
 from flask_sqlalchemy import SQLAlchemy
 import logging
+import urllib
 
 app = Flask(__name__)
-app.config['SQLALCHEMY_DATABASE_URI'] = 'postgresql://username:password@localhost/dbname'
+
+# Ustawienia połączenia do bazy danych Azure SQL
+params = urllib.parse.quote_plus("DRIVER={ODBC Driver 17 for SQL Server};"
+                                 "SERVER=<your_server>.database.windows.net;"
+                                 "DATABASE=<your_database>;"
+                                 "UID=<your_username>;"
+                                 "PWD=<your_password>")
+app.config['SQLALCHEMY_DATABASE_URI'] = f"mssql+pyodbc:///?odbc_connect={params}"
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 db = SQLAlchemy(app)
